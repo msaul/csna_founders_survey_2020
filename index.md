@@ -2,7 +2,7 @@
 
 This GitHub repository contains code, scripts, and metadata associated with the survey of behavioral, physiological, and brain transcriptomic traits led by Michael C. Saul in early 2020.
 
-The preprint of the data presented in this GitHub is forthcoming.
+The preprint derived from the data and analysis presented in this GitHub is forthcoming.
 
 ## Behavioral and Physiological Data Analysis
 
