@@ -1,0 +1,387 @@
+---
+title: "Founders Cocaine vs Sham Expression Prep (RSEM)"
+author: "Michael C. Saul (michael.saul [at] jax.org)"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    number_sections: true
+    fig_retina: true
+    self_contained: true
+    code_folding: show
+    theme: flatly
+    highlight: default
+    df_print: paged
+---
+
+# Background
+
+## Motivation
+
+### Purpose of analysis
+
+This analysis is performed to preprocess straital expression data prior to expression linear modeling analysis.
+
+# Analysis
+
+## Setup
+
+### Working directory
+
+All chunks will run in the working folder for this experiment.
+
+```{r setup}
+knitr::opts_knit$set(root.dir = "~/Box Sync/projects/founders_rnaseq/")
+```
+
+Getting current date
+
+```{r}
+current_date = format(Sys.time(),"%Y-%m-%d")
+```
+
+### R libraries
+
+Calling R libraries necessary for this analysis.
+
+```{r}
+library("limma")
+library("GenomicRanges")
+library("tibble")
+library("tximport")
+library("edgeR")
+library("rhdf5")
+library("ggplot2")
+library("gplots")
+library("RColorBrewer")
+library("GGally")
+library("biomaRt")
+library("ggbeeswarm")
+```
+
+# Data Import
+
+## Pre-data import
+
+### Getting `norm_rank_transform` function
+
+```{r}
+norm_rank_transform = function(x, c = (0)) {
+  stopifnot(is.numeric(x) & is.vector(x))
+  x_noNA = which(!is.na(x))
+  N = length(x_noNA)
+  x[x_noNA] = qnorm((rank(x[x_noNA], ties.method = "random") - c) / (N - (2 * c) + 1))
+  return(x)
+}
+```
+
+## Importing data
+
+### Importing phenotypic data
+
+Importing phenotype data from the sample key.
+
+```{r}
+founders_pheno = read.table("sample_key_18-chesler-002.txt", 
+                            sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+row.names(founders_pheno) = founders_pheno$Name
+```
+
+### Importing expression data
+
+```{r}
+# Preparing to read in aligned and summarized data
+founders_RSEM_dir = "/Users/saulm/Documents/STAR_RSEM/transcript_RSEM_quant/"
+founders_RSEM_files = list.files(path = founders_RSEM_dir, pattern = "isoforms.results$")
+founders_RSEM_files = data.frame(base = founders_RSEM_files,
+                                       stringsAsFactors = FALSE)
+founders_RSEM_files$sample_id = gsub("^(GT18-\\d+)_.*-chesler-002.*$", "\\1", founders_RSEM_files$base)
+row.names(founders_RSEM_files) = founders_RSEM_files$sample_id
+founders_pheno$RSEM_path = paste(founders_RSEM_dir, founders_RSEM_files[founders_pheno$Name,"base"], sep = "")
+
+# Getting founder strains for tximport
+founder_strains = unique(founders_pheno$Strain)
+
+file_i = read.table(founders_pheno[1,"RSEM_path"], header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+founders_tx2gene = data.frame(TXNAME = file_i$transcript_id,
+                              GENEID = file_i$gene_id,
+                              stringsAsFactors = FALSE)
+founders_tx2gene = as_tibble(founders_tx2gene)
+
+txi_i = tximport(files = founders_pheno[,"RSEM_path"],
+                 type = "rsem",
+                 tx2gene = founders_tx2gene,
+                 countsFromAbundance = "lengthScaledTPM",
+                 abundanceCol = "TPM",
+                 ignoreTxVersion = TRUE)
+
+gene_mat_i = txi_i$counts
+colnames(gene_mat_i) = row.names(founders_RSEM_files)
+founder_gene_counts = as.data.frame(gene_mat_i)
+rm(list = c("txi_i", "file_i", "gene_mat_i"))
+  
+founder_gene_counts = as.matrix(founder_gene_counts[which(rowSums(is.na(founder_gene_counts)) == 0),founders_pheno$Name])
+founder_ERCC_counts = founder_gene_counts[grep("ERCC", row.names(founder_gene_counts)),]
+founder_gene_counts = founder_gene_counts[grep("^ENSMUSG", row.names(founder_gene_counts)),]
+row.names(founder_gene_counts) = gsub("^(ENSMUSG\\d{11})_.*$", "\\1", row.names(founder_gene_counts))
+```
+
+Importing transcript data to transcript-level abundances.
+
+```{r}
+# Preparing to read in aligned and summarized data
+txi_i = tximport(files = founders_pheno[,"RSEM_path"],
+                 type = "rsem",
+                 txOut = TRUE,
+                 countsFromAbundance = "lengthScaledTPM",
+                 abundanceCol = "TPM",
+                 ignoreTxVersion = TRUE)
+
+trans_mat_i = txi_i$counts
+colnames(trans_mat_i) = row.names(founders_RSEM_files)
+founder_trans_counts = as.data.frame(trans_mat_i)
+rm(list = c("txi_i", "trans_mat_i"))
+  
+founder_trans_counts = as.matrix(founder_trans_counts[which(rowSums(is.na(founder_trans_counts)) == 0),founders_pheno$Name])
+founder_ERCC_trans_counts = founder_trans_counts[grep("ERCC", row.names(founder_trans_counts)),]
+founder_trans_counts = founder_trans_counts[grep("^ENSMUST", row.names(founder_trans_counts)),]
+row.names(founder_trans_counts) = gsub("^(ENSMUST\\d{11})_.*$", "\\1", row.names(founder_trans_counts))
+founders_trans_dge = DGEList(as.matrix(founder_trans_counts))
+founders_dge_trans_filter = filterByExpr(founders_trans_dge)
+founders_dge_trans_filter = founders_dge_trans_filter[row.names(founders_trans_dge)]
+
+founders_dge_trans_notkept_rows = founders_trans_dge[which(!(founders_dge_trans_filter)),]
+founders_trans_dge = founders_trans_dge[which(founders_dge_trans_filter),]
+founders_trans_dge = calcNormFactors(founders_trans_dge, method = "TMM")
+founders_trans_voom = voom(founders_trans_dge)
+```
+
+Preparing edgeR DGEList from the data at the gene level.
+
+```{r}
+founders_pheno_counts_agree = length(which(row.names(founders_pheno) == colnames(founder_gene_counts))) == ncol(founder_gene_counts)
+founders_dge = DGEList(as.matrix(founder_gene_counts))
+founders_dge$samples = cbind(founders_dge$samples, founders_pheno[,-1])
+ifelse(founders_pheno_counts_agree,"Counts and pheno data have same IDs.", "Counts and pheno data have different IDs.")
+```
+
+Saving RSEM table.
+
+```{r}
+# Saving RSEM tables
+saveRDS(founder_gene_counts, paste("founders_RSEM_table_", current_date,".RDS", sep = ""), compress = "xz")
+saveRDS(founder_ERCC_counts, paste("founders_RSEM_ERCC_table_", current_date,".RDS", sep = ""), compress = "xz")
+```
+
+Getting CPM values for the data.
+
+```{r}
+founders_DGE_norm = calcNormFactors(founders_dge, method = "TMM")
+founders_cpm = as.data.frame(cpm(founders_dge, normalized.lib.sizes = TRUE))
+```
+
+### QC of expression data
+
+Starting with the data from the `Strain` factor.
+
+```{r}
+founders_sex = founders_pheno$Sex
+founders_sex_colors = ifelse(founders_sex == "F", "#3399CC","#FFCC33")
+founders_strain = gsub("/","",founders_pheno$Strain)
+strain_key = readRDS("~/Box Sync/CC_DO_founders/cc_do_founders_key.RDS")
+row.names(strain_key) = strain_key$collaborative_cross_abbreviation
+founders_straincolors = strain_key[gsub("/","",founders_pheno[,"Strain"]),"collaborative_cross_color_broman"]
+
+founders_MDS = plotMDS(founders_dge, plot = FALSE)
+founders_MDS_df = data.frame(row.names = names(founders_MDS$x),
+                             Sample = names(founders_MDS$x),
+                             Strain = factor(gsub("/","",founders_pheno[names(founders_MDS$x),"Strain"]),
+                                             levels = strain_key$collaborative_cross_abbreviation,
+                                             ordered = TRUE),
+                             x = founders_MDS$x, y = founders_MDS$y)
+
+saveRDS(founders_MDS_df,
+        paste("~/Box Sync/projects/founders_rnaseq/founders_MDS_df_",current_date,".RDS",sep=""))
+
+founders_MDS_plot = ggplot(data = founders_MDS_df, aes(x = x, y = y, color = Strain)) +
+  geom_point() +
+  scale_color_manual(values = strain_key$collaborative_cross_color_broman)
+
+founders_MDS_plot
+```
+
+The MDS clearly reiterates the known relationships between the strains. The wild-derived strains cluster separate from the domesticated strains, but WSB clusters closest to the other *domesticus* subspecies strains.
+
+```{r}
+# Setting up biomaRt
+chr_maRt = useMart(biomart = "ENSEMBL_MART_ENSEMBL",
+                   host = "oct2018.archive.ensembl.org",
+                   dataset = "mmusculus_gene_ensembl")
+chr_maRt_filter = "chromosome_name"
+chr_maRt_attributes = c("ensembl_gene_id")
+
+# Setting heatmap colors
+heatmapColors = colorRampPalette(c("#660066","#FFFFFF"))(n=299)
+
+# Getting genes on various combinations of chromosome
+chr1_genes = as.character(getBM(chr_maRt_attributes, chr_maRt_filter, c("1"), chr_maRt)$ensembl_gene_id)
+chrX_genes = as.character(getBM(chr_maRt_attributes, chr_maRt_filter, c("X"), chr_maRt)$ensembl_gene_id)
+chrY_genes = as.character(getBM(chr_maRt_attributes, chr_maRt_filter, c("Y"), chr_maRt)$ensembl_gene_id)
+autosomal_genes = as.character(getBM(chr_maRt_attributes, chr_maRt_filter, as.character(1:19), chr_maRt)$ensembl_gene_id)
+```
+
+Now clustering samples together based upon their autosomal expression correlations.
+
+```{r}
+# Filtering chr1 genes and looking at heatmap
+autosomal_genes_dge = autosomal_genes[which(autosomal_genes %in% row.names(founders_dge))]
+autosomal_genes_cpm = founders_cpm[autosomal_genes_dge,]
+autosomal_genes_cpm = autosomal_genes_cpm[which(rowSums(autosomal_genes_cpm >= 1) >= 16),]
+heatmap.2(cor(autosomal_genes_cpm),
+          trace = "none",
+          col = heatmapColors,
+          dendrogram = "both",
+          ColSideColors = founders_sex_colors,
+          RowSideColors = founders_straincolors,
+          main = "autosomal gene expression correlation")
+```
+
+The samples hold together fairly well based upon strain. Intercorrelations appear moderately strain-dependent. A/J appears to cluster separate to the other strains, and for some reason, A/J has relatively low correlation with other domesticated *domesticus* lines such as 129 and NZO. Still, this is a satisfactory result.
+
+Earlier work with DO animals has demonstrated differential alignment due to *Rn7s1* (ENSMUSG00000099021) and *Rn7s2* (ENSMUSG00000099250). Trying the same correlation without these genes.
+
+```{r}
+heatmap.2(cor(autosomal_genes_cpm[-1 * which(row.names(autosomal_genes_cpm) %in% c("ENSMUSG00000099021","ENSMUSG00000099250")),]),
+          trace = "none",
+          col = heatmapColors,
+          dendrogram = "both",
+          ColSideColors = founders_sex_colors,
+          RowSideColors = founders_straincolors,
+          main = "autosomal gene expression correlation")
+```
+
+There seems to be no issue with these genes. Looking at chromosome X data.
+
+```{r}
+# Filtering chrX genes and looking at heatmap
+chrX_genes_dge = chrX_genes[which(chrX_genes %in% row.names(founders_dge))]
+chrX_genes_cpm = founders_cpm[chrX_genes_dge,]
+chrX_genes_cpm = chrX_genes_cpm[which(rowSums(chrX_genes_cpm >= 1) >= 16),]
+heatmap.2(cor(chrX_genes_cpm),
+          trace = "none",
+          col = heatmapColors,
+          dendrogram = "both",
+          ColSideColors = founders_sex_colors,
+          RowSideColors = founders_straincolors,
+          main = "chrX gene expression correlation")
+```
+
+With only a couple of exceptions, the chromosome X data do stratify between the sexes. It's possible there's X aneuploidy here, so the same attempt should be done on the Y chromosome.
+
+```{r}
+# Filtering chrX genes and looking at heatmap
+chrY_genes_dge = chrY_genes[which(chrY_genes %in% row.names(founders_dge))]
+chrY_genes_cpm = founders_cpm[chrY_genes_dge,]
+chrY_genes_cpm = chrY_genes_cpm[which(rowSums(chrY_genes_cpm >= 1) >= 16),]
+heatmap.2(cor(chrY_genes_cpm),
+          trace = "none",
+          col = heatmapColors,
+          dendrogram = "both",
+          RowSideColors = founders_straincolors,
+          ColSideColors = founders_sex_colors,
+          main = "chrY gene expression correlation")
+```
+
+These seem consistent, indicating that missexing is more likely. Going with the chromosome Y sex.
+
+```{r}
+founders_chrY_dist = dist(cor(chrY_genes_cpm))
+founders_chrY_hclust = hclust(founders_chrY_dist)
+founders_chrY_treecut = cutree(founders_chrY_hclust, k = 2)
+founders_chrY_table = table(paste(founders_sex, founders_chrY_treecut))
+```
+
+2 is female, 1 is male.
+
+```{r}
+founders_chrY_sex = ifelse(founders_chrY_treecut == 1, "M", "F")
+names(founders_chrY_sex) = names(founders_chrY_treecut)
+founders_pheno$chrY_sex = founders_chrY_sex[row.names(founders_pheno)]
+```
+
+There appears to be a problem with choroid plexus contamination. Building a nuissance covariate using the geometric mean of an unambiguous set of markers for the choroid plexus contamination. Using the Sathyanesan et al., 2012 paper from *Translational Psychiatry*, which reports that *Kl* and *Ttr* are good and unambiguous markers. Their Ensembl gene IDs are ENSMUSG00000058488 and ENSMUSG00000061808 respectively.
+
+Calculating log-mean of these values.
+
+```{r}
+choroid_plexus_genes = c("ENSMUSG00000058488","ENSMUSG00000061808")
+logmean = function(x) {
+  return(exp(mean(log(x))))
+}
+choroid_plexus_covariate = apply(cpm(founders_dge[choroid_plexus_genes,]), MARGIN = 2, FUN = logmean)
+founders_pheno$choroid_plexus_covariate = choroid_plexus_covariate[row.names(founders_pheno)]
+```
+
+Filtering expression data and phenotype data in preparation for expression modeling work, then calculating TMM normalization values.
+
+```{r}
+founders_dge_filter = filterByExpr(founders_dge)
+founders_dge_filter = founders_dge_filter[row.names(founders_dge)]
+# Filtering out rRNA data
+founders_dge_filter[c("ENSMUSG00000099021","ENSMUSG00000099250")] = FALSE
+DO_dge_notkept_rows = founders_dge[which(!(founders_dge_filter)),]
+founders_dge = founders_dge[which(founders_dge_filter),]
+founders_dge = calcNormFactors(founders_dge, method = "TMM")
+```
+
+Doing a log-2 transform and a normal rank-transform of the data.
+
+```{r}
+founders_voom = voom(founders_dge)
+```
+
+```{r}
+founders_normrt = matrix(nrow = nrow(founders_voom), ncol = ncol(founders_voom))
+rownames(founders_normrt) = rownames(founders_voom)
+colnames(founders_normrt) = colnames(founders_voom)
+for (i in 1:nrow(founders_normrt)) {
+  gene_i = rownames(founders_normrt)[i]
+  founders_normrt[i,] = norm_rank_transform(founders_voom$E[gene_i,colnames(founders_normrt)])
+}
+founders_normrt = founders_normrt[,colnames(founders_voom)]
+```
+
+Collapsing and reordering the phenotype data to the same size as the `voom` object
+
+```{r}
+founders_pheno = founders_pheno[colnames(founders_voom),]
+```
+
+### Saving data for downstream analysis.
+
+Saving `voom` and `DGEList` objects as well as the phenotype data frame.
+
+```{r}
+saveRDS(founders_dge,paste("./expression_study/founders_",ncol(founders_dge),"_RSEM_DGEList_",current_date,".RDS",sep=""),compress="xz")
+saveRDS(founders_voom,paste("./expression_study/founders_",ncol(founders_voom),"_RSEM_voom_",current_date,".RDS",sep=""),compress="xz")
+saveRDS(founders_normrt,paste("./expression_study/founders_",ncol(founders_normrt),"_RSEM_normrt_",current_date,".RDS",sep=""),compress="xz")
+saveRDS(founders_pheno,paste("./expression_study/founders_",nrow(founders_pheno),"_RSEM_pheno_",current_date,".RDS",sep=""),compress="xz")
+saveRDS(founders_trans_dge,paste("./expression_study/founders_trans_",ncol(founders_trans_dge),"_RSEM_DGEList_",current_date,".RDS",sep=""),compress="xz")
+saveRDS(founders_trans_voom,paste("./expression_study/founders_trans_",ncol(founders_trans_voom),"_RSEM_trans_voom_",current_date,".RDS",sep=""),compress="xz")
+```
+
+## Reproducibility Information
+
+### R session and OS information
+
+```{r}
+founders_expression_prep_sessionInfo = sessionInfo()
+founders_expression_prep_sessionInfo
+```
+
+### Document Control
+
+This document was prepared using RMarkdown in RStudio.

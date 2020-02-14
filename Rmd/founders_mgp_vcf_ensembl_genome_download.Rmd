@@ -1,0 +1,166 @@
+---
+title: "Mouse MGP VCF File: DO and CC Founders"
+author: "Michael C. Saul (michael.saul [at] jax.org)"
+date: "2018-10-25"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    number_sections: true
+    fig_retina: true
+    self_contained: true
+    code_folding: show
+    theme: flatly
+    highlight: default
+    df_print: paged
+---
+
+# Background
+
+## Motivation
+
+### Purpose of analysis
+
+The purpose of this analysis is to reproducibly download the founder Sanger MGP SNP VCF files for release 1505 of the MGP in advance of compiling them into a single file for use in Diversity Outbred RNA-seq alignment.
+
+# Analysis
+
+## Downloads
+
+### Founder Variants (SNPs)
+
+Downloading and checking md5sums of the following SNP files:
+
+File Name                                 | md5 Checksum
+------------------------------------------|------------------------------------
+129S1_SvImJ.mgp.v5.snps.dbSNP142.vcf.gz   | `935ff15ff2ab878d961121c303ced19d` 
+A_J.mgp.v5.snps.dbSNP142.vcf.gz           | `fb53f6a71c607c59c61bd2fa1f0efa49` 
+CAST_EiJ.mgp.v5.snps.dbSNP142.vcf.gz      | `7180ebf308a5ffb44e733fcb6b85a7d0` 
+NOD_ShiLtJ.mgp.v5.snps.dbSNP142.vcf.gz    | `fcf8319a19e7d3720ab64bec705671c4`
+NZO_HlLtJ.mgp.v5.snps.dbSNP142.vcf.gz     | `0f9ac892d52e2cf1aef09b4060c0411e`
+PWK_PhJ.mgp.v5.snps.dbSNP142.vcf.gz       | `62da476180985068c440b13591ead0a6`
+WSB_EiJ.mgp.v5.snps.dbSNP142.vcf.gz       | `ea93453a6c94ad781ce8c155c4538966`
+
+```{sh}
+# Shell script
+echo "Beginning release 1505 founder SNP download"
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/129S1_SvImJ.mgp.v5.snps.dbSNP142.vcf.gz 
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/A_J.mgp.v5.snps.dbSNP142.vcf.gz
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/CAST_EiJ.mgp.v5.snps.dbSNP142.vcf.gz
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/NOD_ShiLtJ.mgp.v5.snps.dbSNP142.vcf.gz
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/NZO_HlLtJ.mgp.v5.snps.dbSNP142.vcf.gz 
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/PWK_PhJ.mgp.v5.snps.dbSNP142.vcf.gz
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/WSB_EiJ.mgp.v5.snps.dbSNP142.vcf.gz 
+echo "Finished release 1505 founder SNP download"
+```
+
+Checking md5 checksums of these files
+
+```{r}
+# R code
+library("tools")
+paste("The md5 checksum for the downloaded 129S1_SvImJ.mgp.v5.snps.dbSNP142.vcf.gz",ifelse(md5sum("129S1_SvImJ.mgp.v5.snps.dbSNP142.vcf.gz") == "935ff15ff2ab878d961121c303ced19d", " does ", " does not "), "agree with the reference: 935ff15ff2ab878d961121c303ced19d", sep = "")
+paste("The md5 checksum for the downloaded A_J.mgp.v5.snps.dbSNP142.vcf.gz",ifelse(md5sum("A_J.mgp.v5.snps.dbSNP142.vcf.gz") == "fb53f6a71c607c59c61bd2fa1f0efa49", " does ", " does not "), "agree with the reference: fb53f6a71c607c59c61bd2fa1f0efa49", sep = "")
+paste("The md5 checksum for the downloaded CAST_EiJ.mgp.v5.snps.dbSNP142.vcf.gz",ifelse(md5sum("CAST_EiJ.mgp.v5.snps.dbSNP142.vcf.gz") == "7180ebf308a5ffb44e733fcb6b85a7d0", " does ", " does not "), "agree with the reference: 7180ebf308a5ffb44e733fcb6b85a7d0", sep = "")
+paste("The md5 checksum for the downloaded NOD_ShiLtJ.mgp.v5.snps.dbSNP142.vcf.gz",ifelse(md5sum("NOD_ShiLtJ.mgp.v5.snps.dbSNP142.vcf.gz") == "fcf8319a19e7d3720ab64bec705671c4", " does ", " does not "), "agree with the reference: fcf8319a19e7d3720ab64bec705671c4", sep = "")
+paste("The md5 checksum for the downloaded NZO_HlLtJ.mgp.v5.snps.dbSNP142.vcf.gz",ifelse(md5sum("NZO_HlLtJ.mgp.v5.snps.dbSNP142.vcf.gz") == "0f9ac892d52e2cf1aef09b4060c0411e", " does ", " does not "), "agree with the reference: 0f9ac892d52e2cf1aef09b4060c0411e", sep = "")
+paste("The md5 checksum for the downloaded PWK_PhJ.mgp.v5.snps.dbSNP142.vcf.gz",ifelse(md5sum("PWK_PhJ.mgp.v5.snps.dbSNP142.vcf.gz") == "62da476180985068c440b13591ead0a6", " does ", " does not "), "agree with the reference: 62da476180985068c440b13591ead0a6", sep = "")
+paste("The md5 checksum for the downloaded WSB_EiJ.mgp.v5.snps.dbSNP142.vcf.gz",ifelse(md5sum("WSB_EiJ.mgp.v5.snps.dbSNP142.vcf.gz") == "ea93453a6c94ad781ce8c155c4538966", " does ", " does not "), "agree with the reference: ea93453a6c94ad781ce8c155c4538966", sep = "")
+```
+
+### Founder Variants (INDELs)
+
+Downloading and checking md5sums of the following INDEL files:
+
+File Name                                         | md5 Checksum
+--------------------------------------------------|------------------------------------
+129S1_SvImJ.mgp.v5.indels.dbSNP142.normed.vcf.gz  | `faa52363b8c6b25016ad87a1b8b3ae06` 
+A_J.mgp.v5.indels.dbSNP142.normed.vcf.gz          | `14c137fef26739fd914fae181491812c` 
+CAST_EiJ.mgp.v5.indels.dbSNP142.normed.vcf.gz     | `a92681cf1dd5108ac36e17b5e9313a3f` 
+NOD_ShiLtJ.mgp.v5.indels.dbSNP142.normed.vcf.gz   | `55b4d07c7b04af2d92ce59b056d9f447`
+NZO_HlLtJ.mgp.v5.indels.dbSNP142.normed.vcf.gz    | `07f4399639fd79170cf95d0a0f776aad`
+PWK_PhJ.mgp.v5.indels.dbSNP142.normed.vcf.gz      | `ac9c0aec191456aa8e75f670c1f82d0c`
+WSB_EiJ.mgp.v5.indels.dbSNP142.normed.vcf.gz      | `dd95f46dcbdf0bc4a7d8f65c47088c19`
+
+```{sh}
+# Shell script
+echo "Beginning release 1505 founder INDEL download"
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/129S1_SvImJ.mgp.v5.indels.dbSNP142.normed.vcf.gz
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/A_J.mgp.v5.indels.dbSNP142.normed.vcf.gz
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/CAST_EiJ.mgp.v5.indels.dbSNP142.normed.vcf.gz
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/NOD_ShiLtJ.mgp.v5.indels.dbSNP142.normed.vcf.gz
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/NZO_HlLtJ.mgp.v5.indels.dbSNP142.normed.vcf.gz
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/PWK_PhJ.mgp.v5.indels.dbSNP142.normed.vcf.gz
+curl -s -O ftp://ftp-mouse.sanger.ac.uk/REL-1505-SNPs_Indels/strain_specific_vcfs/WSB_EiJ.mgp.v5.indels.dbSNP142.normed.vcf.gz 
+echo "Finished release 1505 founder INDEL download"
+```
+
+Checking md5 checksums of these files
+
+```{r}
+# R code
+paste("The md5 checksum for the downloaded 129S1_SvImJ.mgp.v5.indels.dbSNP142.normed.vcf.gz",ifelse(md5sum("129S1_SvImJ.mgp.v5.indels.dbSNP142.normed.vcf.gz") == "faa52363b8c6b25016ad87a1b8b3ae06", " does ", " does not "), "agree with the reference: faa52363b8c6b25016ad87a1b8b3ae06", sep = "")
+paste("The md5 checksum for the downloaded A_J.mgp.v5.indels.dbSNP142.normed.vcf.gz",ifelse(md5sum("A_J.mgp.v5.indels.dbSNP142.normed.vcf.gz") == "14c137fef26739fd914fae181491812c", " does ", " does not "), "agree with the reference: 14c137fef26739fd914fae181491812c", sep = "")
+paste("The md5 checksum for the downloaded CAST_EiJ.mgp.v5.indels.dbSNP142.normed.vcf.gz",ifelse(md5sum("CAST_EiJ.mgp.v5.indels.dbSNP142.normed.vcf.gz") == "a92681cf1dd5108ac36e17b5e9313a3f", " does ", " does not "), "agree with the reference: a92681cf1dd5108ac36e17b5e9313a3f", sep = "")
+paste("The md5 checksum for the downloaded NOD_ShiLtJ.mgp.v5.indels.dbSNP142.normed.vcf.gz",ifelse(md5sum("NOD_ShiLtJ.mgp.v5.indels.dbSNP142.normed.vcf.gz") == "55b4d07c7b04af2d92ce59b056d9f447", " does ", " does not "), "agree with the reference: 55b4d07c7b04af2d92ce59b056d9f447", sep = "")
+paste("The md5 checksum for the downloaded NZO_HlLtJ.mgp.v5.indels.dbSNP142.normed.vcf.gz",ifelse(md5sum("NZO_HlLtJ.mgp.v5.indels.dbSNP142.normed.vcf.gz") == "07f4399639fd79170cf95d0a0f776aad", " does ", " does not "), "agree with the reference: 07f4399639fd79170cf95d0a0f776aad", sep = "")
+paste("The md5 checksum for the downloaded PWK_PhJ.mgp.v5.indels.dbSNP142.normed.vcf.gz",ifelse(md5sum("PWK_PhJ.mgp.v5.indels.dbSNP142.normed.vcf.gz") == "ac9c0aec191456aa8e75f670c1f82d0c", " does ", " does not "), "agree with the reference: ac9c0aec191456aa8e75f670c1f82d0c", sep = "")
+paste("The md5 checksum for the downloaded WSB_EiJ.mgp.v5.indels.dbSNP142.normed.vcf.gz",ifelse(md5sum("WSB_EiJ.mgp.v5.indels.dbSNP142.normed.vcf.gz") == "dd95f46dcbdf0bc4a7d8f65c47088c19", " does ", " does not "), "agree with the reference: dd95f46dcbdf0bc4a7d8f65c47088c19", sep = "")
+```
+
+### Genome Files
+
+Downloading the soft masked primary assembly of the GRCm38 genome and the Ensembl v94 transcriptome annotation. Ensembl does not list md5 checksums, but they do list conventional checksums.
+
+File Name                                           | Checksum
+----------------------------------------------------|---------------------
+Mus_musculus.GRCm38.dna_sm.primary_assembly.fa.gz   | `04137 841792` 
+Mus_musculus.GRCm38.94.gtf.gz                       | `15062 28709`
+
+```{sh}
+# Shell script
+echo "Beginning GRCm38 genome and Ensembl v94 annotation download"
+curl -s -O ftp://ftp.ensembl.org/pub/release-94/fasta/mus_musculus/dna/Mus_musculus.GRCm38.dna_sm.primary_assembly.fa.gz
+curl -s -O ftp://ftp.ensembl.org/pub/release-94/gtf/mus_musculus/Mus_musculus.GRCm38.94.gtf.gz
+echo "Finished GRCm38 genome and Ensembl v94 annotation download"
+```
+
+Checking the checksums of these files.
+
+```{r}
+# R code
+paste("The checksum for the downloaded Mus_musculus.GRCm38.dna_sm.primary_assembly.fa.gz",
+      ifelse(system("cksum -o 1 Mus_musculus.GRCm38.dna_sm.primary_assembly.fa.gz", intern = TRUE) == "4137 841792 Mus_musculus.GRCm38.dna_sm.primary_assembly.fa.gz", 
+             " does ", " does not "), "agree with the reference: 04137 841792", sep = "")
+paste("The checksum for the downloaded Mus_musculus.GRCm38.94.gtf.gz",
+      ifelse(system("cksum -o 1 Mus_musculus.GRCm38.94.gtf.gz", intern = TRUE) == "15062 28709 Mus_musculus.GRCm38.94.gtf.gz", 
+             " does ", " does not "), "agree with the reference: 15062 28709", sep = "")
+```
+
+Getting the md5 checksums for these files.
+
+```{r}
+# R code
+paste("The md5 checksum for the downloaded Mus_musculus.GRCm38.dna_sm.primary_assembly.fa.gz is: ",
+      md5sum("Mus_musculus.GRCm38.dna_sm.primary_assembly.fa.gz"), sep = "")
+paste("The checksum for the downloaded Mus_musculus.GRCm38.94.gtf.gz is: ",
+      md5sum("Mus_musculus.GRCm38.94.gtf.gz"), sep = "")
+```
+
+## Reproducibility Information
+
+### R session and OS information
+
+```{r}
+# R code
+founders_mgp_prep_sessionInfo = sessionInfo()
+founders_mgp_prep_sessionInfo
+```
+
+### Document Control
+
+This document was prepared using RMarkdown in RStudio.
+

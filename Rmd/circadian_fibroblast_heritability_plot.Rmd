@@ -1,0 +1,262 @@
+---
+title: "Founders Circadian Rhythm Fibroblast Data: Heritability and Plotting"
+author: "Michael C. Saul (michael.saul [at] jax.org)"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    number_sections: true
+    fig_retina: true
+    self_contained: true
+    code_folding: show
+    theme: flatly
+    highlight: default
+    df_print: paged
+---
+
+# Background
+
+## Motivation
+
+### Purpose of analysis
+
+This analysis is performed to process the circadian rhythm amplitude data and calculate:
+
+1) Heritability
+2) Strain-by-sex means and standard errors for plotting
+
+**These data were collected by Sam Moon-Kim.** The preprocessing script `circadian_fibroblastmport_preprocess.Rmd` was used to filter the data to only those data requiring reporting.
+
+# Analysis
+
+## Setup
+
+### Working directory
+
+All chunks will run in the working folder for this experiment.
+
+```{r setup}
+script_root_dir = "~/Box/manuscripts/founders_heritability/"
+knitr::opts_knit$set(root.dir = script_root_dir)
+```
+
+Getting current date
+
+```{r}
+current_date = format(Sys.time(),"%Y-%m-%d")
+```
+
+### R libraries
+
+Calling R libraries necessary for this analysis.
+
+```{r}
+library("tidyverse")
+library("lubridate")
+library("cowplot")
+library("MASS")
+library("ggbeeswarm")
+```
+
+## Importing data
+
+## Importing and displaying raw fibroblast amplitude data
+
+Getting data from the filtering script.
+
+```{r}
+fibroblast_amplitude = readRDS(paste(script_root_dir, "data/circadian_amplitude_data_preprocessed_2019-09-04.RDS", sep = ""))
+```
+
+Displaying raw data.
+
+```{r}
+fibroblast_amplitude
+```
+
+Getting the amplitude means and using these for heritability calculations.
+
+```{r}
+fibroblast_amplitude_mean = fibroblast_amplitude %>%
+  group_by(Subject) %>%
+  summarize(Strain = unique(Strain),
+            Sex = unique(Sex),
+            Cohort = unique(Cohort),
+            Amplitude_Mean = mean(Amplitude))
+fibroblast_amplitude_mean = as.data.frame(fibroblast_amplitude_mean)
+```
+
+Getting founders strain key
+
+```{r}
+founders_key = readRDS("~/Box/CC_DO_founders/cc_do_founders_key.RDS")
+row.names(founders_key) = founders_key$strain
+```
+
+### Fitting ANOVA model for fibroblast data
+
+Looking at the residuals of the simplest model first.
+
+```{r}
+fibroblast_amplitude_resid = fibroblast_amplitude_mean
+fibroblast_amplitude_resid$Amplitude_Resid = resid(lm(Amplitude_Mean ~ Strain, data = fibroblast_amplitude_resid))
+fibroblast_amplitude_resid$Strain = factor(fibroblast_amplitude_resid$Strain,
+                                           levels = founders_key$strain,
+                                           ordered = TRUE)
+
+ggplot(data = fibroblast_amplitude_resid, aes(x = Strain, y = Amplitude_Resid, color = Strain, shape = Sex)) +
+  geom_hline(yintercept = 0, col = "#999999") +
+  geom_beeswarm(size = 2) + 
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_shape_manual(values = c(16,23))
+```
+
+The residuals indicate heteroscedasticity -- especially comparing 129 to NOD. Doing Box-Cox to see if a transform will help.
+
+```{r}
+boxcox(lm(Amplitude_Mean ~ Strain, data = fibroblast_amplitude_resid))
+```
+
+The Box-Cox log-likelihood is highest at 0, which implies that a log-transform will be advantageous.
+
+```{r}
+boxcox(lm(log10(Amplitude_Mean) ~ Strain, data = fibroblast_amplitude_resid))
+```
+
+The Box-Cox is centered closer to 1. Plotting residuals.
+
+```{r}
+fibroblast_amplitude_resid$Amplitude_Resid_log10 = resid(lm(log10(Amplitude_Mean) ~ Strain, data = fibroblast_amplitude_resid))
+
+ggplot(data = fibroblast_amplitude_resid, aes(x = Strain, y = Amplitude_Resid_log10, color = Strain, shape = Sex)) +
+  geom_hline(yintercept = 0, col = "#999999") +
+  geom_beeswarm(size = 2) + 
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_shape_manual(values = c(16,23))
+```
+
+There still appears to be some heteroscedasticity, but to within the tolerance of a linear model. This looks good. Comparing AICs for different possible models.
+
+```{r}
+AICs = c()
+AICs["AIC_inter"] = AIC(lm(log10(Amplitude_Mean) ~ Cohort + Strain + Sex + Strain:Sex, data = fibroblast_amplitude_mean))
+AICs["AIC_nointer"] = AIC(lm(log10(Amplitude_Mean) ~ Cohort + Strain + Sex, data = fibroblast_amplitude_mean))
+AICs["AIC_nosex"] = AIC(lm(log10(Amplitude_Mean) ~ Cohort + Strain, data = fibroblast_amplitude_mean))
+AICs["AIC_nocohort"] = AIC(lm(log10(Amplitude_Mean) ~ Strain, data = fibroblast_amplitude_mean))
+AICs["AIC_nostrain"] = AIC(lm(log10(Amplitude_Mean) ~ Cohort, data = fibroblast_amplitude_mean))
+
+AICs
+
+BICs = c()
+BICs["BIC_inter"] = BIC(lm(log10(Amplitude_Mean) ~ Cohort + Strain + Sex + Strain:Sex, data = fibroblast_amplitude_mean))
+BICs["BIC_nointer"] = BIC(lm(log10(Amplitude_Mean) ~ Cohort + Strain + Sex, data = fibroblast_amplitude_mean))
+BICs["BIC_nosex"] = BIC(lm(log10(Amplitude_Mean) ~ Cohort + Strain, data = fibroblast_amplitude_mean))
+BICs["BIC_nocohort"] = BIC(lm(log10(Amplitude_Mean) ~ Strain, data = fibroblast_amplitude_mean))
+BICs["BIC_nostrain"] = BIC(lm(log10(Amplitude_Mean) ~ Cohort, data = fibroblast_amplitude_mean))
+
+BICs
+```
+
+The best model for heritability according to both AIC and BIC contains additive covariates of cohort and strain, but not sex and strain:sex interaction factors. Plotting the residuals for this model.
+
+```{r}
+fibroblast_amplitude_resid$Amplitude_Resid_log10_CohortStrain = resid(lm(log10(Amplitude_Mean) ~ Cohort + Strain, data = fibroblast_amplitude_resid))
+
+ggplot(data = fibroblast_amplitude_resid, aes(x = Strain, y = Amplitude_Resid_log10_CohortStrain, color = Strain, shape = Sex)) +
+  geom_hline(yintercept = 0, col = "#999999") +
+  geom_beeswarm(size = 2) + 
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_shape_manual(values = c(16,23))
+```
+
+This model has a good fit. Showing ANOVA table for this model.
+
+```{r}
+anova(lm(log10(Amplitude_Mean) ~ Cohort + Strain, data = fibroblast_amplitude_resid))
+```
+
+This will be used for downstream heritability calculations. However, also fitting overall model with strain, sex, and their interactions:
+
+```{r}
+anova(lm(log10(Amplitude_Mean) ~ Cohort + Strain + Sex + Strain:Sex, data = fibroblast_amplitude_resid))
+```
+
+### Calculating heritability for fibroblast data
+
+Calculating heritability using the ANOVA table from the best fitting model. Using the following equation:
+
+$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+
+where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ is the mean square of the residuals, and $n_{mean}$ is the mean sample size of a strain.
+
+```{r}
+mean_n = nrow(fibroblast_amplitude_mean) / length(unique(fibroblast_amplitude_mean$Strain))
+anova_amplitude = anova(lm(log10(Amplitude_Mean) ~ Cohort + Strain, data = fibroblast_amplitude_mean))
+anova_amplitude_df = as.data.frame(anova_amplitude)
+h2_amplitude = anova_amplitude_df["Strain","Mean Sq"] / (anova_amplitude_df["Strain","Mean Sq"] + ((mean_n - 1) * anova_amplitude_df["Residuals","Mean Sq"]))
+h2_amplitude
+```
+
+### Plotting strain x sex means
+
+Plotting the strain:sex information for these data.
+
+```{r}
+
+fibroblast_plotting_summary = fibroblast_amplitude_mean %>%
+  group_by(Strain, Sex) %>%
+  summarize(Strain_Sex_mean = mean(log10(Amplitude_Mean), na.rm = TRUE),
+            Strain_Sex_sem = sd(log10(Amplitude_Mean), na.rm = TRUE) / length(which(!is.na(log10(Amplitude_Mean))))) %>%
+  mutate(Strain_Sex = paste(Strain, gsub("^([MF]).*$", "\\1", Sex), sep = " "),
+         Strain_Sex_backmean = 10^Strain_Sex_mean,
+         Strain_Sex_ul = 10^(Strain_Sex_mean + Strain_Sex_sem), 
+         Strain_Sex_ll = 10^(Strain_Sex_mean - Strain_Sex_sem))
+fibroblast_plotting_summary = as.data.frame(fibroblast_plotting_summary)
+fibroblast_plotting_summary$Strain_Sex = factor(fibroblast_plotting_summary$Strain_Sex,
+                                                levels = paste(rep(founders_key$strain, each = 2), rep(c(" F", " M"), times = 8), sep = ""),
+                                                ordered = TRUE)
+fibroblast_plotting_summary$Strain = factor(fibroblast_plotting_summary$Strain,
+                                            levels = founders_key$strain,
+                                            ordered = TRUE)
+
+founders_amplitude_strain_sex_plot = ggplot(data = fibroblast_plotting_summary, aes(x = Strain_Sex, y = Strain_Sex_backmean, color = Strain, group = Strain)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymin = Strain_Sex_ll, ymax = Strain_Sex_ul), width = 0.5, size = 1) +
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position="none") +
+  xlab(NULL) +
+  ylab("Amplitude (log-scale)") +
+  scale_y_log10() +
+  ggtitle("Fibroblast Rhythm: Amplitude")
+
+founders_amplitude_strain_sex_plot
+```
+
+Saving plot
+
+```{r}
+saveRDS(founders_amplitude_strain_sex_plot, "./output/founders_amplitude_strain_sex_plot.RDS")
+```
+
+# Reproducibility Information
+
+## Software Used
+
+### R session and OS information
+
+```{r sessionInfo}
+circadian_prep_sessionInfo = sessionInfo()
+circadian_prep_sessionInfo
+saveRDS(circadian_prep_sessionInfo, paste(script_root_dir, "./output/circadian_prep_sessionInfo_",current_date,".RDS", sep = ""), compress="xz")
+```
+
+## Document Control
+
+This document was prepared using RMarkdown in RStudio.

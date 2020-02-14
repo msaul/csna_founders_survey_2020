@@ -1,0 +1,295 @@
+---
+title: "Founders Reversal Learning Data: Heritability and Plotting"
+author: "Michael C. Saul (michael.saul [at] jax.org)"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    number_sections: true
+    fig_retina: true
+    self_contained: true
+    code_folding: show
+    theme: flatly
+    highlight: default
+    df_print: paged
+---
+
+# Background
+
+## Motivation
+
+### Purpose of analysis
+
+This analysis is performed to process the reversal learning data and calculate:
+
+1) Heritability
+2) Strain-by-sex means and standard errors for plotting
+
+The preprocessing script `reversal_import_preprocess.Rmd` was used to filter the data to only those data requiring reporting.
+
+# Analysis
+
+## Setup
+
+### Working directory
+
+All chunks will run in the working folder for this experiment.
+
+```{r setup}
+script_root_dir = "~/Box Sync/manuscripts/founders_heritability/"
+knitr::opts_knit$set(root.dir = script_root_dir)
+```
+
+Getting current date
+
+```{r}
+current_date = format(Sys.time(),"%Y-%m-%d")
+```
+
+### R libraries
+
+Calling R libraries necessary for this analysis.
+
+```{r}
+library("tidyverse")
+library("lubridate")
+library("cowplot")
+library("MASS")
+library("ggbeeswarm")
+```
+
+### Getting `norm_rank_transform` function
+
+```{r}
+norm_rank_transform = function(x, c = (0)) {
+  stopifnot(is.numeric(x) & is.vector(x))
+  N = length(x)
+  return(qnorm((rank(x) - c) / (N - (2 * c) + 1)))
+}
+```
+
+## Importing data
+
+## Importing and displaying raw reversal learning data
+
+Getting data from the filtering script.
+
+```{r}
+reversal_data = readRDS(paste(script_root_dir, "data/reversal_data_preprocessed_2019-10-28.RDS", sep = ""))
+```
+
+Displaying raw data.
+
+```{r}
+reversal_data = reversal_data[which(!(is.na(reversal_data$Avg_Anticip_C_R))),]
+reversal_data
+```
+
+Getting founders strain key
+
+```{r}
+founders_key = readRDS("~/Box Sync/CC_DO_founders/cc_do_founders_key.RDS")
+row.names(founders_key) = founders_key$strain
+```
+
+### Fitting ANOVA model for reversal data
+
+Looking at the residuals of the simplest model first.
+
+```{r}
+reversal_resid = reversal_data
+reversal_resid$Avg_Anticip_C_R_resid = resid(lm(Avg_Anticip_C_R ~ Site + Strain, data = reversal_resid))
+reversal_resid$Strain = factor(reversal_resid$Strain,
+                               levels = founders_key$strain,
+                               ordered = TRUE)
+
+ggplot(data = reversal_resid, aes(x = Strain, y = Avg_Anticip_C_R_resid, color = Strain, shape = Sex)) +
+  geom_hline(yintercept = 0, col = "#999999") +
+  geom_beeswarm(size = 2) + 
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_shape_manual(values = c(16,23))
+```
+
+These residuals look very good, but there is some skewness to the residuals. It may be of benefit to look at a Box-Cox power transform to see if a transformation is merited.
+
+```{r}
+boxcox(lm(Avg_Anticip_C_R ~ Site + Strain, data = reversal_resid))
+```
+
+The Box-Cox log-likelihood centers around 1/3, which indicates that a cube root transformation may be advantageous.
+
+```{r}
+cubert = function(x) {
+  return(sign(x) * (abs(x) ^ (1/3)))
+}
+
+reversal_resid$Avg_Anticip_C_R_cubert = cubert(reversal_resid$Avg_Anticip_C_R)
+boxcox(lm(Avg_Anticip_C_R_cubert ~ Site + Strain, data = reversal_resid))
+```
+
+This centers closer to 1. Looking at the residuals.
+
+```{r}
+reversal_resid$Avg_Anticip_C_R_cubert_resid = resid(lm(Avg_Anticip_C_R_cubert ~ Site + Strain, data = reversal_resid))
+
+ggplot(data = reversal_resid, aes(x = Strain, y = Avg_Anticip_C_R_cubert_resid, color = Strain, shape = Sex)) +
+  geom_hline(yintercept = 0, col = "#999999") +
+  geom_beeswarm(size = 2) + 
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_shape_manual(values = c(16,23))
+```
+
+These residuals are very good without any skewness. Cube root transforming data and proceeding with model selection.
+
+```{r}
+reversal_data$Avg_Anticip_C_R_cubert = cubert(reversal_data$Avg_Anticip_C_R)
+
+AICs = c()
+AICs["AIC_inter_site"] = AIC(lm(Avg_Anticip_C_R_cubert ~ Site + Strain + Sex + Strain:Sex, data = reversal_data))
+AICs["AIC_inter"] = AIC(lm(Avg_Anticip_C_R_cubert ~ Strain + Sex + Strain:Sex, data = reversal_data))
+AICs["AIC_interonly_site"] = AIC(lm(Avg_Anticip_C_R_cubert ~ Site + Strain + Strain:Sex, data = reversal_data))
+AICs["AIC_interonly"] = AIC(lm(Avg_Anticip_C_R_cubert ~ Strain + Strain:Sex, data = reversal_data))
+AICs["AIC_nointer_site"] = AIC(lm(Avg_Anticip_C_R_cubert ~ Site + Strain + Sex, data = reversal_data))
+AICs["AIC_nointer"] = AIC(lm(Avg_Anticip_C_R_cubert ~ Strain + Sex, data = reversal_data))
+AICs["AIC_nosex_site"] = AIC(lm(Avg_Anticip_C_R_cubert ~ Site + Strain, data = reversal_data))
+AICs["AIC_nosex"] = AIC(lm(Avg_Anticip_C_R_cubert ~ Strain, data = reversal_data))
+AICs["AIC_sexonly_site"] =  AIC(lm(Avg_Anticip_C_R_cubert ~ Site + Sex, data = reversal_data))
+AICs["AIC_sexonly"] =  AIC(lm(Avg_Anticip_C_R_cubert ~ Sex, data = reversal_data))
+
+AICs
+
+BICs = c()
+BICs["BIC_inter_site"] = BIC(lm(Avg_Anticip_C_R_cubert ~ Site + Strain + Sex + Strain:Sex, data = reversal_data))
+BICs["BIC_inter"] = BIC(lm(Avg_Anticip_C_R_cubert ~ Strain + Sex + Strain:Sex, data = reversal_data))
+BICs["BIC_interonly_site"] = BIC(lm(Avg_Anticip_C_R_cubert ~ Site + Strain + Strain:Sex, data = reversal_data))
+BICs["BIC_interonly"] = BIC(lm(Avg_Anticip_C_R_cubert ~ Strain + Strain:Sex, data = reversal_data))
+BICs["BIC_nointer_site"] = BIC(lm(Avg_Anticip_C_R_cubert ~ Site + Strain + Sex, data = reversal_data))
+BICs["BIC_nointer"] = BIC(lm(Avg_Anticip_C_R_cubert ~ Strain + Sex, data = reversal_data))
+BICs["BIC_nosex_site"] = BIC(lm(Avg_Anticip_C_R_cubert ~ Site + Strain, data = reversal_data))
+BICs["BIC_nosex"] = BIC(lm(Avg_Anticip_C_R_cubert ~ Strain, data = reversal_data))
+BICs["BIC_sexonly_site"] =  BIC(lm(Avg_Anticip_C_R_cubert ~ Site + Sex, data = reversal_data))
+BICs["BIC_sexonly"] =  BIC(lm(Avg_Anticip_C_R_cubert ~ Sex, data = reversal_data))
+
+BICs
+```
+
+The best model for heritability differs depending upon AIC vs BIC. BIC punishes added variables more strongly and indicates that the strongest model for heritability is the one containing only strain without the site additive covariate. However, site is probably an important factor.
+
+Showing ANOVA table for the full model.
+
+```{r}
+anova(lm(Avg_Anticip_C_R_cubert ~ Site + Strain + Sex + Strain:Sex, data = reversal_data))
+```
+
+No evidence of sex effect or strain:sex interaction. Showing ANOVA table for the reduced model with site.
+
+```{r}
+anova(lm(Avg_Anticip_C_R_cubert ~ Site + Strain, data = reversal_data))
+```
+
+Showing ANOVA table for the reduced model without site.
+
+```{r}
+anova(lm(Avg_Anticip_C_R_cubert ~ Strain, data = reversal_data))
+```
+
+The reduced model with site included be used for downstream heritability calculations.
+
+### Calculating heritability for reversal data
+
+Calculating heritability using the ANOVA table from the best fitting model. Using the following equation:
+
+$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+
+where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ is the mean square of the residuals, and $n_{mean}$ is the mean sample size of a strain. Ignoring the additive covariate of site, which is a blocking variable.
+
+```{r}
+mean_n = nrow(reversal_data) / length(unique(reversal_data[,"Strain"]))
+anova_reversal = anova(lm(Avg_Anticip_C_R_cubert ~ Site + Strain, data = reversal_data))
+anova_reversal_df = as.data.frame(anova_reversal)
+h2_reversal = anova_reversal_df["Strain","Mean Sq"] / (anova_reversal_df["Strain","Mean Sq"] + ((mean_n - 1) * anova_reversal_df["Residuals","Mean Sq"]))
+h2_reversal
+```
+
+The heritability of `r round(h2_reversal, 2)` is good.
+
+### Plotting strain x sex means
+
+Plotting the strain:sex information for these data.
+
+```{r}
+reversal_summary = reversal_data %>%
+  group_by(Strain, Sex) %>%
+  summarize(Strain_Sex_mean = mean(Avg_Anticip_C_R_cubert, na.rm = TRUE),
+            Strain_Sex_sem = sd(Avg_Anticip_C_R_cubert, na.rm = TRUE) / length(which(!is.na(Avg_Anticip_C_R_cubert)))) %>%
+  mutate(Strain_Sex = paste(Strain, gsub("^([MF]).*$", "\\1", Sex), sep = " "),
+         Strain_Sex_mean_backtrans = Strain_Sex_mean ^ 3,
+         Strain_Sex_ul = (Strain_Sex_mean + Strain_Sex_sem) ^ 3, 
+         Strain_Sex_ll = (Strain_Sex_mean - Strain_Sex_sem) ^ 3)
+reversal_summary = as.data.frame(reversal_summary)
+reversal_summary$Strain_Sex = factor(reversal_summary$Strain_Sex,
+                                  levels = paste(rep(founders_key$strain, each = 2), rep(c(" F", " M"), times = 8), sep = ""),
+                                  ordered = TRUE)
+reversal_summary$Strain = factor(reversal_summary$Strain,
+                              levels = founders_key$strain,
+                              ordered = TRUE)
+
+reversal_strain_sex_plot = ggplot(data = reversal_summary, aes(x = Strain_Sex, y = Strain_Sex_mean_backtrans, color = Strain, group = Strain)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymin = Strain_Sex_ll, ymax = Strain_Sex_ul), width = 0.5, size = 1) +
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position="none") +
+  xlab(NULL) +
+  ylab("Correct Hole Premature Responding") +
+  ggtitle("Reversal Learning: Correct Hole Premature Responding at Reversal")
+
+reversal_strain_sex_plot
+```
+
+Plotting raw reversal data
+
+```{r}
+reversal_data$Strain_Sex = factor(paste(reversal_data$Strain, gsub("^([MF]).*$", "\\1", reversal_data$Sex), sep = " "),
+                               levels = levels(reversal_summary$Strain_Sex),
+                               ordered = TRUE)
+reversal_data$Strain = factor(reversal_data$Strain,
+                           levels = founders_key$strain,
+                           ordered = TRUE)
+raw_data_plot = ggplot(data = reversal_data, aes(x = Strain_Sex, y = Avg_Anticip_C_R, color = Strain, shape = Sex)) +
+  geom_beeswarm() +
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position="none") +
+  xlab(NULL) +
+  ylab("Correct Hole Premature Responding") +
+  ggtitle("Reversal Learning: Correct Hole Premature Responding at Reversal")
+raw_data_plot
+```
+
+Saving plot
+
+```{r}
+saveRDS(raw_data_plot, "./output/founders_reversal_raw_data_plot.RDS")
+saveRDS(reversal_strain_sex_plot, "./output/founders_reversal_strain_sex_plot.RDS")
+```
+
+# Reproducibility Information
+
+## Software Used
+
+### R session and OS information
+
+```{r sessionInfo}
+reversal_plot_sessionInfo = sessionInfo()
+reversal_plot_sessionInfo
+saveRDS(reversal_plot_sessionInfo, paste(script_root_dir, "./output/reversal_plot_sessionInfo_",current_date,".RDS", sep = ""), compress="xz")
+```
+
+## Document Control
+
+This document was prepared using RMarkdown in RStudio.

@@ -1,0 +1,571 @@
+---
+title: "Founders Novelty Data: Heritability and Plotting"
+author: "Michael C. Saul (michael.saul [at] jax.org)"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    number_sections: true
+    fig_retina: true
+    self_contained: true
+    code_folding: show
+    theme: flatly
+    highlight: default
+    df_print: paged
+---
+
+# Background
+
+## Motivation
+
+### Purpose of analysis
+
+This analysis is performed to process the novelty data and calculate:
+
+1) Heritability
+2) Strain-by-sex means and standard errors for plotting
+
+**These data were collected by the CSNA behavioral phenotyping core. Ultimate authorship for these data will need to be discussed with Leona Gagnon.** The preprocessing notebook `novelty_import_preprocess.Rmd` was used to filter the data to only those data requiring reporting.
+
+# Analysis
+
+## Setup
+
+### Working directory
+
+All chunks will run in the working folder for this experiment.
+
+```{r setup}
+script_root_dir = "~/Box Sync/manuscripts/founders_heritability/"
+knitr::opts_knit$set(root.dir = script_root_dir)
+```
+
+Getting current date
+
+```{r}
+current_date = format(Sys.time(),"%Y-%m-%d")
+```
+
+### R libraries
+
+Calling R libraries necessary for this analysis.
+
+```{r}
+library("tidyverse")
+library("lubridate")
+library("cowplot")
+library("MASS")
+library("ggbeeswarm")
+```
+
+## Importing data
+
+## Importing and displaying raw fibroblast amplitude data
+
+Getting data from the filtering script.
+
+```{r}
+novelty_data = readRDS(paste(script_root_dir, "data/novelty_data_preprocessed_2019-09-12.RDS", sep = ""))
+```
+
+Displaying raw data.
+
+```{r}
+novelty_data
+```
+
+Getting founders strain key
+
+```{r}
+founders_key = readRDS("~/Box Sync/CC_DO_founders/cc_do_founders_key.RDS")
+row.names(founders_key) = founders_key$strain
+```
+
+### Fitting ANOVA model for Open Field data
+
+Looking at the residuals of the simplest model first.
+
+```{r}
+OFA_data = novelty_data %>%
+  dplyr::select(Mouse_ID, Strain, Sex, OFA_tester, OFA_pct_dist_center) %>%
+  filter(!is.na(OFA_pct_dist_center))
+anova(lm(OFA_pct_dist_center ~ OFA_tester + Strain + Sex + Strain:Sex, data = OFA_data))
+```
+
+Tester is a significant effect in the naive model. However, genetic background (`Strain`) remains the strongest effect. Testing the residuals for the simplest model with only the `Strain` factor in it.
+
+```{r}
+OFA_resid = OFA_data
+OFA_resid$OFA_pct_dist_center_Resid = resid(lm(OFA_pct_dist_center ~ Strain, data = OFA_resid))
+OFA_resid$Strain = factor(OFA_resid$Strain,
+                          levels = founders_key$strain,
+                          ordered = TRUE)
+
+ggplot(data = OFA_resid, aes(x = Strain, y = OFA_pct_dist_center_Resid, color = Strain, shape = Sex)) +
+  geom_hline(yintercept = 0, col = "#999999") +
+  geom_beeswarm(size = 2) + 
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_shape_manual(values = c(16,23))
+```
+
+The residuals look a little funny in A/J, but seem reasonable and mostly normal for the rest of the strains. Importantly, the variances do not appear far off for any of the strains.
+
+The arcsin transformation resolves the residuals of the A/J adequately. Assessing model fitting parameters for various OFA models with arcsin transformed data.
+
+```{r}
+AICs = c()
+AICs["AIC_inter"] = AIC(lm(OFA_pct_dist_center ~ OFA_tester + Strain + Sex + Strain:Sex, data = OFA_data))
+AICs["AIC_nointer"] = AIC(lm(OFA_pct_dist_center ~ OFA_tester + Strain + Sex, data = OFA_data))
+AICs["AIC_nosex"] = AIC(lm(OFA_pct_dist_center ~ OFA_tester + Strain, data = OFA_data))
+AICs["AIC_notester"] = AIC(lm(OFA_pct_dist_center ~ Strain, data = OFA_data))
+AICs["AIC_nostrain"] = AIC(lm(OFA_pct_dist_center ~ OFA_tester, data = OFA_data))
+
+AICs
+
+BICs = c()
+BICs["BIC_inter"] = BIC(lm(OFA_pct_dist_center ~ OFA_tester + Strain + Sex + Strain:Sex, data = OFA_data))
+BICs["BIC_nointer"] = BIC(lm(OFA_pct_dist_center ~ OFA_tester + Strain + Sex, data = OFA_data))
+BICs["BIC_nosex"] = BIC(lm(OFA_pct_dist_center ~ OFA_tester + Strain, data = OFA_data))
+BICs["BIC_notester"] = BIC(lm(OFA_pct_dist_center ~ Strain, data = OFA_data))
+BICs["BIC_nostrain"] = BIC(lm(OFA_pct_dist_center ~ OFA_tester, data = OFA_data))
+
+BICs
+```
+
+The best model for heritability according to both AIC and BIC includes only the strain effect. The residuals plot shows that this model has an okay fit. Showing ANOVA table for this model.
+
+```{r}
+anova(lm(OFA_pct_dist_center ~ Strain, data = OFA_data))
+anova(lm(OFA_pct_dist_center ~ Strain, data = OFA_data))$`Pr(>F)`[1]
+```
+
+This will be used for downstream heritability calculations.
+
+### Calculating heritability for open field data
+
+Calculating heritability using the ANOVA table from the best fitting model. Using the following equation:
+
+$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+
+where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ is the mean square of the residuals, and $n_{mean}$ is the mean sample size of a strain.
+
+```{r}
+mean_n = nrow(OFA_data) / length(unique(OFA_data$Strain))
+anova_OFA = anova(lm(OFA_pct_dist_center ~ Strain, data = OFA_data))
+anova_OFA_df = as.data.frame(anova_OFA)
+h2_OFA = anova_OFA_df["Strain","Mean Sq"] / (anova_OFA_df["Strain","Mean Sq"] + ((mean_n - 1) * anova_OFA_df["Residuals","Mean Sq"]))
+h2_OFA
+```
+
+This $H^2$ calculation of `r round(h2_OFA, 2)` is better than previous estimates.
+
+### Plotting strain x sex means for open field proportion of time in center
+
+Plotting the strain:sex information for these data.
+
+```{r}
+OFA_plotting_summary = OFA_data %>%
+  group_by(Strain, Sex) %>%
+  summarize(Strain_Sex_mean = mean(OFA_pct_dist_center, na.rm = TRUE),
+            Strain_Sex_sem = sd(OFA_pct_dist_center, na.rm = TRUE) / length(which(!is.na(OFA_pct_dist_center)))) %>%
+  mutate(Strain_Sex = paste(Strain, gsub("^([MF]).*$", "\\1", Sex), sep = " "),
+         Strain_Sex_ul = Strain_Sex_mean + Strain_Sex_sem,
+         Strain_Sex_ll = Strain_Sex_mean - Strain_Sex_sem)
+OFA_plotting_summary = as.data.frame(OFA_plotting_summary)
+OFA_plotting_summary$Strain_Sex = factor(OFA_plotting_summary$Strain_Sex,
+                                         levels = paste(rep(founders_key$strain, each = 2), rep(c(" F", " M"), times = 8), sep = ""),
+                                         ordered = TRUE)
+OFA_plotting_summary$Strain = factor(OFA_plotting_summary$Strain,
+                                     levels = founders_key$strain,
+                                     ordered = TRUE)
+
+OFA_pct_dist_center_strain_sex_plot = ggplot(data = OFA_plotting_summary, aes(x = Strain_Sex, y = Strain_Sex_mean, color = Strain, group = Strain)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymin = Strain_Sex_ll, ymax = Strain_Sex_ul), width = 0.5, size = 1) +
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position="none") +
+  xlab(NULL) +
+  ylab("% Distance in Center") +
+  ggtitle("Novelty: Open Field")
+
+OFA_pct_dist_center_strain_sex_plot
+```
+
+Saving plot
+
+```{r}
+saveRDS(OFA_pct_dist_center_strain_sex_plot, "./output/founders_OFA_pcenter_strain_sex_plot.RDS")
+```
+
+### Fitting ANOVA model for Light-Dark data
+
+Starting with an ANOVA with all factors.
+
+```{r}
+LD_data = novelty_data %>%
+  dplyr::select(Mouse_ID, Strain, Sex, LD_tester, LD_total_transitions) %>%
+  filter(!is.na(LD_total_transitions))
+anova(lm(LD_total_transitions ~ LD_tester + Strain + Sex + Strain:Sex, data = LD_data))
+```
+
+Tester is a significant factor here as well. Again, `Strain` is highly significant. Looking at the residuals of the simplest model first.
+
+```{r}
+LD_data = novelty_data %>%
+  dplyr::select(Mouse_ID, Strain, Sex, LD_tester, LD_total_transitions) %>%
+  filter(!is.na(LD_total_transitions))
+LD_resid = LD_data
+LD_resid$LD_total_transitions_Resid = resid(lm(LD_total_transitions ~ Strain, data = LD_resid))
+LD_resid$Strain = factor(LD_resid$Strain,
+                         levels = founders_key$strain,
+                         ordered = TRUE)
+
+ggplot(data = LD_resid, aes(x = Strain, y = LD_total_transitions_Resid, color = Strain, shape = Sex)) +
+  geom_hline(yintercept = 0, col = "#999999") +
+  geom_beeswarm(size = 2) + 
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_shape_manual(values = c(16,23))
+```
+
+These residuals are skewed. Evaluating transforms using Box-Cox.
+
+```{r}
+boxcox(lm(LD_total_transitions ~ Strain, data = LD_resid))
+```
+
+The Box-Cox log-likelihood appears centered at 1/3, indicating that a cube-root transformation may be merited.
+
+```{r}
+LD_resid$LD_total_transitions_cuberoot = LD_resid$LD_total_transitions ^ (1/3)
+LD_resid$LD_total_transitions_Resid_cuberoot = resid(lm(LD_total_transitions_cuberoot ~ Strain, data = LD_resid))
+
+ggplot(data = LD_resid, aes(x = Strain, y = LD_total_transitions_Resid_cuberoot, color = Strain, shape = Sex)) +
+  geom_hline(yintercept = 0, col = "#999999") +
+  geom_beeswarm(size = 2) + 
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_shape_manual(values = c(16,23))
+```
+
+This looks better. Looking to see if the Box-Cox log-likelihood for the transformed data centers at zero.
+
+```{r}
+boxcox(lm(LD_total_transitions_cuberoot ~ Strain, data = LD_resid))
+```
+
+The cube-root transform appears to perform well. Testing a number of different models for the light-dark data.
+
+```{r}
+AICs = c()
+AICs["AIC_inter"] = AIC(lm(LD_total_transitions ^ (1/3) ~ LD_tester + Strain + Sex + Strain:Sex, data = LD_data))
+AICs["AIC_nointer"] = AIC(lm(LD_total_transitions ^ (1/3) ~ LD_tester + Strain + Sex, data = LD_data))
+AICs["AIC_nosex"] = AIC(lm(LD_total_transitions ^ (1/3) ~ LD_tester + Strain, data = LD_data))
+AICs["AIC_notester"] = AIC(lm(LD_total_transitions ^ (1/3) ~ Strain, data = LD_data))
+AICs["AIC_nostrain"] = AIC(lm(LD_total_transitions ^ (1/3) ~ LD_tester, data = LD_data))
+
+AICs
+
+BICs = c()
+BICs["BIC_inter"] = BIC(lm(LD_total_transitions ^ (1/3) ~ LD_tester + Strain + Sex + Strain:Sex, data = LD_data))
+BICs["BIC_nointer"] = BIC(lm(LD_total_transitions ^ (1/3) ~ LD_tester + Strain + Sex, data = LD_data))
+BICs["BIC_nosex"] = BIC(lm(LD_total_transitions ^ (1/3) ~ LD_tester + Strain, data = LD_data))
+BICs["BIC_notester"] = BIC(lm(LD_total_transitions ^ (1/3) ~ Strain, data = LD_data))
+BICs["BIC_nostrain"] = BIC(lm(LD_total_transitions ^ (1/3) ~ LD_tester, data = LD_data))
+
+BICs
+```
+
+The AIC and BIC both indicate that the best model includes only strain. Showing the ANOVA table for this model.
+
+```{r}
+anova(lm(LD_total_transitions ^ (1/3) ~ Strain, data = LD_data))
+anova(lm(LD_total_transitions ^ (1/3) ~ Strain, data = LD_data))$`Pr(>F)`[1]
+```
+
+### Calculating heritability for light-dark transitions data
+
+Calculating heritability using the ANOVA table from the best fitting model. Using the following equation:
+
+$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+
+where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ is the mean square of the residuals, and $n_{mean}$ is the mean sample size of a strain.
+
+```{r}
+mean_n = nrow(LD_data) / length(unique(LD_data$Strain))
+anova_LD = anova(lm(LD_total_transitions ^ (1/3) ~ Strain, data = LD_data))
+anova_LD_df = as.data.frame(anova_LD)
+h2_LD = anova_LD_df["Strain","Mean Sq"] / (anova_LD_df["Strain","Mean Sq"] + ((mean_n - 1) * anova_LD_df["Residuals","Mean Sq"]))
+h2_LD
+```
+
+This $H^2$ calculation of `r round(h2_LD, 2)` is also better than previous estimates.
+
+### Plotting strain x sex means for transitions between light and dark.
+
+Plotting the strain:sex information for these data.
+
+```{r}
+LD_plotting_summary = LD_data %>%
+  group_by(Strain, Sex) %>%
+  summarize(Strain_Sex_mean = mean(LD_total_transitions ^ (1/3), na.rm = TRUE),
+            Strain_Sex_sem = sd(LD_total_transitions ^ (1/3), na.rm = TRUE) / length(which(!is.na(LD_total_transitions ^ (1/3))))) %>%
+  mutate(Strain_Sex = paste(Strain, gsub("^([MF]).*$", "\\1", Sex), sep = " "),
+         Strain_Sex_backtrans_mean = Strain_Sex_mean ^ 3,
+         Strain_Sex_ul = (Strain_Sex_mean + Strain_Sex_sem) ^ 3,
+         Strain_Sex_ll = (Strain_Sex_mean - Strain_Sex_sem) ^ 3)
+LD_plotting_summary = as.data.frame(LD_plotting_summary)
+LD_plotting_summary$Strain_Sex = factor(LD_plotting_summary$Strain_Sex,
+                                        levels = paste(rep(founders_key$strain, each = 2), rep(c(" F", " M"), times = 8), sep = ""),
+                                        ordered = TRUE)
+LD_plotting_summary$Strain = factor(LD_plotting_summary$Strain,
+                                     levels = founders_key$strain,
+                                     ordered = TRUE)
+
+LD_transitions_plot = ggplot(data = LD_plotting_summary, aes(x = Strain_Sex, y = Strain_Sex_backtrans_mean, color = Strain, group = Strain)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymin = Strain_Sex_ll, ymax = Strain_Sex_ul), width = 0.5, size = 1) +
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position="none") +
+  xlab(NULL) +
+  ylab("Transitions Between Light and Dark") +
+  ggtitle("Novelty: Light-Dark")
+
+LD_transitions_plot
+```
+
+Saving plot
+
+```{r}
+saveRDS(LD_transitions_plot, "./output/founders_LD_transitions_strain_sex_plot.RDS")
+```
+
+### Fitting ANOVA model for Hole Board data
+
+Fitting the ANOVA with all effects first.
+
+```{r}
+HB_data = novelty_data %>%
+  dplyr::select(Mouse_ID, Strain, Sex, HB_tester, HB_Total_Entries) %>%
+  filter(!is.na(HB_Total_Entries))
+anova(lm(HB_Total_Entries ~ HB_tester + Strain + Sex + Strain:Sex, data = HB_data))
+```
+
+All factors are significant including the `Strain:Sex` interaction. Looking at the residuals of this model first.
+
+```{r}
+HB_resid = HB_data
+HB_resid$HB_Total_Entries_Resid = resid(lm(HB_Total_Entries ~ HB_tester + Strain + Sex + Strain:Sex, data = HB_resid))
+HB_resid$Strain = factor(HB_resid$Strain,
+                         levels = founders_key$strain,
+                         ordered = TRUE)
+
+ggplot(data = HB_resid, aes(x = Strain, y = HB_Total_Entries_Resid, color = Strain, shape = Sex)) +
+  geom_hline(yintercept = 0, col = "#999999") +
+  geom_beeswarm(size = 2) + 
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_shape_manual(values = c(16,23))
+```
+
+These residuals show some heteroscedasticity, but it appears to be within the tolerance of linear models. Using the untransformed data to select model using AIC and BIC.
+
+```{r}
+AICs = c()
+AICs["AIC_inter"] = AIC(lm(HB_Total_Entries ~ HB_tester + Strain + Sex + Strain:Sex, data = HB_data))
+AICs["AIC_nointer"] = AIC(lm(HB_Total_Entries ~ HB_tester + Strain + Sex, data = HB_data))
+AICs["AIC_nosex"] = AIC(lm(HB_Total_Entries ~ HB_tester + Strain, data = HB_data))
+AICs["AIC_notester"] = AIC(lm(HB_Total_Entries ~ Strain, data = HB_data))
+AICs["AIC_nostrain"] = AIC(lm(HB_Total_Entries ~ HB_tester, data = HB_data))
+
+AICs
+
+BICs = c()
+BICs["BIC_inter"] = BIC(lm(HB_Total_Entries ~ HB_tester + Strain + Sex + Strain:Sex, data = HB_data))
+BICs["BIC_nointer"] = BIC(lm(HB_Total_Entries ~ HB_tester + Strain + Sex, data = HB_data))
+BICs["BIC_nosex"] = BIC(lm(HB_Total_Entries ~ HB_tester + Strain, data = HB_data))
+BICs["BIC_notester"] = BIC(lm(HB_Total_Entries ~ Strain, data = HB_data))
+BICs["BIC_nostrain"] = BIC(lm(HB_Total_Entries ~ HB_tester, data = HB_data))
+
+BICs
+```
+
+Though the best model appears to be the one with no tester and no sex effects, these effects are significant. Showing the ANOVA table for this model.
+
+```{r}
+anova(lm(HB_Total_Entries ~ Strain, data = HB_data))
+anova(lm(HB_Total_Entries ~ Strain, data = HB_data))$`Pr(>F)`[1]
+```
+
+### Calculating heritability for hole board total entries data
+
+Calculating heritability using the ANOVA table from the best fitting model. Using the following equation:
+
+$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+
+where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ is the mean square of the residuals, and $n_{mean}$ is the mean sample size of a strain.
+
+```{r}
+mean_n = nrow(HB_data) / length(unique(HB_data$Strain))
+anova_HB = anova(lm(HB_Total_Entries ~ Strain, data = HB_data))
+anova_HB_df = as.data.frame(anova_HB)
+h2_HB = anova_HB_df["Strain","Mean Sq"] / (anova_HB_df["Strain","Mean Sq"] + ((mean_n - 1) * anova_HB_df["Residuals","Mean Sq"]))
+h2_HB
+```
+
+This $H^2$ calculation of `r round(h2_HB, 2)` is also better than previous estimates, which were below 0.4.
+
+### Plotting strain x sex means for hole board total entries
+
+Plotting the strain:sex information for these data.
+
+```{r}
+HB_plotting_summary = HB_data %>%
+  group_by(Strain, Sex) %>%
+  summarize(Strain_Sex_mean = mean(HB_Total_Entries, na.rm = TRUE),
+            Strain_Sex_sem = sd(HB_Total_Entries, na.rm = TRUE) / length(which(!is.na(HB_Total_Entries)))) %>%
+  mutate(Strain_Sex = paste(Strain, gsub("^([MF]).*$", "\\1", Sex), sep = " "),
+         Strain_Sex_ul = Strain_Sex_mean + Strain_Sex_sem,
+         Strain_Sex_ll = Strain_Sex_mean - Strain_Sex_sem)
+HB_plotting_summary = as.data.frame(HB_plotting_summary)
+HB_plotting_summary$Strain_Sex = factor(HB_plotting_summary$Strain_Sex,
+                                         levels = paste(rep(founders_key$strain, each = 2), rep(c(" F", " M"), times = 8), sep = ""),
+                                         ordered = TRUE)
+HB_plotting_summary$Strain = factor(HB_plotting_summary$Strain,
+                                     levels = founders_key$strain,
+                                     ordered = TRUE)
+
+HB_total_entries_strain_sex_plot = ggplot(data = HB_plotting_summary, aes(x = Strain_Sex, y = Strain_Sex_mean, color = Strain, group = Strain)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymin = Strain_Sex_ll, ymax = Strain_Sex_ul), width = 0.5, size = 1) +
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position="none") +
+  xlab(NULL) +
+  ylab("Total Entries") +
+  ggtitle("Novelty: Hole Board")
+
+HB_total_entries_strain_sex_plot
+```
+
+Saving plot
+
+```{r}
+saveRDS(HB_total_entries_strain_sex_plot, "./output/founders_HB_total_entries_strain_sex_plot.RDS")
+```
+
+### Fitting ANOVA model for Novel Place Preference data
+
+Fitting the ANOVA with all effects first.
+
+```{r}
+NPP_data = novelty_data %>%
+  dplyr::select(Mouse_ID, Strain, Sex, NPP_ZoneTime_GreyWhiteBlack_Total) %>%
+  filter(!is.na(NPP_ZoneTime_GreyWhiteBlack_Total))
+anova(lm(NPP_ZoneTime_GreyWhiteBlack_Total ~ Strain + Sex + Strain:Sex, data = NPP_data))
+```
+
+Strain is the only significant factor on this model. Looking at the residuals of the simple model with strain first.
+
+```{r}
+NPP_resid = NPP_data
+NPP_resid$NPP_ZoneTime_GreyWhiteBlack_Total_Resid = resid(lm(NPP_ZoneTime_GreyWhiteBlack_Total ~ Strain, data = NPP_resid))
+NPP_resid$Strain = factor(NPP_resid$Strain,
+                         levels = founders_key$strain,
+                         ordered = TRUE)
+
+ggplot(data = NPP_resid, aes(x = Strain, y = NPP_ZoneTime_GreyWhiteBlack_Total_Resid, color = Strain, shape = Sex)) +
+  geom_hline(yintercept = 0, col = "#999999") +
+  geom_beeswarm(size = 2) + 
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_shape_manual(values = c(16,23))
+```
+
+These residuals appear to be good. Running the ANOVA for this model.
+
+```{r}
+anova(lm(NPP_ZoneTime_GreyWhiteBlack_Total ~ Strain, data = NPP_data))
+anova(lm(NPP_ZoneTime_GreyWhiteBlack_Total ~ Strain, data = NPP_data))$`Pr(>F)`[1]
+```
+
+### Calculating heritability for novel place preference data
+
+Calculating heritability using the ANOVA table from the best fitting model. Using the following equation:
+
+$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+
+where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ is the mean square of the residuals, and $n_{mean}$ is the mean sample size of a strain.
+
+```{r}
+mean_n = nrow(NPP_data) / length(unique(NPP_data$Strain))
+anova_NPP = anova(lm(NPP_ZoneTime_GreyWhiteBlack_Total ~ Strain, data = NPP_data))
+anova_NPP_df = as.data.frame(anova_NPP)
+h2_NPP = anova_NPP_df["Strain","Mean Sq"] / (anova_NPP_df["Strain","Mean Sq"] + ((mean_n - 1) * anova_NPP_df["Residuals","Mean Sq"]))
+h2_NPP
+```
+
+This $H^2$ calculation of `r round(h2_NPP, 2)` is worse than previous estimates, which were above 0.2.
+
+### Plotting strain x sex means for novel place preference
+
+Plotting the strain:sex information for these data.
+
+```{r}
+NPP_plotting_summary = NPP_data %>%
+  group_by(Strain, Sex) %>%
+  summarize(Strain_Sex_mean = mean(NPP_ZoneTime_GreyWhiteBlack_Total, na.rm = TRUE),
+            Strain_Sex_sem = sd(NPP_ZoneTime_GreyWhiteBlack_Total, na.rm = TRUE) / length(which(!is.na(NPP_ZoneTime_GreyWhiteBlack_Total)))) %>%
+  mutate(Strain_Sex = paste(Strain, gsub("^([MF]).*$", "\\1", Sex), sep = " "),
+         Strain_Sex_ul = Strain_Sex_mean + Strain_Sex_sem,
+         Strain_Sex_ll = Strain_Sex_mean - Strain_Sex_sem)
+NPP_plotting_summary = as.data.frame(NPP_plotting_summary)
+NPP_plotting_summary$Strain_Sex = factor(NPP_plotting_summary$Strain_Sex,
+                                         levels = paste(rep(founders_key$strain, each = 2), rep(c(" F", " M"), times = 8), sep = ""),
+                                         ordered = TRUE)
+NPP_plotting_summary$Strain = factor(NPP_plotting_summary$Strain,
+                                     levels = founders_key$strain,
+                                     ordered = TRUE)
+
+NPP_preference_sex_plot = ggplot(data = NPP_plotting_summary, aes(x = Strain_Sex, y = Strain_Sex_mean, color = Strain, group = Strain)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymin = Strain_Sex_ll, ymax = Strain_Sex_ul), width = 0.5, size = 1) +
+  scale_color_manual(values = founders_key$collaborative_cross_color_broman) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position="none") +
+  xlab(NULL) +
+  ylab("Novel Place Preference") +
+  ggtitle("Novelty: Novel Place Preference")
+
+NPP_preference_sex_plot
+```
+
+Saving plot.
+
+```{r}
+saveRDS(NPP_preference_sex_plot, "./output/founders_NPP_preference_strain_sex_plot.RDS")
+```
+
+The PWK strain has the very interesting phenotype here.
+
+# Reproducibility Information
+
+## Software Used
+
+### R session and OS information
+
+```{r sessionInfo}
+novelty_heritability_sessionInfo = sessionInfo()
+novelty_heritability_sessionInfo
+saveRDS(novelty_heritability_sessionInfo, paste(script_root_dir, "./output/novelty_heritability_sessionInfo_",current_date,".RDS", sep = ""), compress="xz")
+```
+
+## Document Control
+
+This document was prepared using RMarkdown in RStudio.
