@@ -2,7 +2,7 @@
 
 This GitHub repository contains code, scripts, and metadata associated with the survey of behavioral, physiological, and brain transcriptomic traits led by Michael C. Saul in early 2020.
 
-The preprint derived from the data and analysis presented in this GitHub is forthcoming.
+The preprint derived from the data and analysis presented in this GitHub is on bioRxiv [https://doi.org/10.1101/2020.02.14.949784](https://doi.org/10.1101/2020.02.14.949784).
 
 ## Behavioral and Physiological Data Analysis
 
@@ -87,3 +87,12 @@ Once the reference genome and transcriptome were downloaded, the attached ERCC f
 * [Analyze expression data with voom+limma RMarkdown notebook](Rmd/founders_expression_analysis_STAR_RSEM.Rmd)
 * [Analyze expression data with voom+limma HTML report](html/founders_expression_analysis_STAR_RSEM.html)
 
+## Licensing
+
+DO/CC Founders: Survey of Behavioral, Physiological, and Transcriptomic Traits. Copyright (C) 2020, Michael C. Saul.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program.  If not, see [https://www.gnu.org/licenses/](https://www.gnu.org/licenses/).
