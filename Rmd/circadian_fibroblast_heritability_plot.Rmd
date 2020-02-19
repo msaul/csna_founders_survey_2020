@@ -239,9 +239,31 @@ founders_amplitude_strain_sex_plot = ggplot(data = fibroblast_plotting_summary, 
 founders_amplitude_strain_sex_plot
 ```
 
+Showing individual points in a beeswarm plot as well.
+
+```{r}
+fibroblast_amplitude_mean$Strain_Sex = factor(paste(as.character(fibroblast_amplitude_mean$Strain), 
+                                                    gsub("^([MF]).*$","\\1",as.character(fibroblast_amplitude_mean$Sex)), 
+                                                    sep = " "),
+                                              levels = paste(rep(founders_key$strain, each = 2), rep(c("F","M"), times = 8), sep = " "),
+                                              ordered = TRUE)
+fibroblast_amplitude_mean$Strain = factor(fibroblast_amplitude_mean$Strain, levels = founders_key$strain, ordered = TRUE)
+founders_amplitude_individual_points_plot = ggplot(data = fibroblast_amplitude_mean, aes(x = Strain_Sex, y = Amplitude_Mean, color = Strain, shape = Sex)) +
+  geom_beeswarm(size = 2) +
+  scale_color_manual(values = c(founders_key$collaborative_cross_color_broman)) +
+  scale_y_log10() +
+  scale_shape_manual(values = c(19,17)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position="none") +
+  xlab(NULL) +
+  ylab("Amplitude (log-scale)") +
+  ggtitle("Fibroblast Rhythm: Amplitude")
+founders_amplitude_individual_points_plot
+```
+
 Saving plot
 
 ```{r}
+
 saveRDS(founders_amplitude_strain_sex_plot, "./output/founders_amplitude_strain_sex_plot.RDS")
 ```
 
