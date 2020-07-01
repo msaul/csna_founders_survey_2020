@@ -35,7 +35,7 @@ The behavioral and physiological data presented in **Figure 1** were analyzed us
 
 ## RNAseq Data Analysis
 
-The RNAseq data presented in **Figure 2** was analyzed with the following scripts, code, and metadata:
+The RNAseq data presented in **Figure 2** and **Figure 3** were analyzed with the following scripts, code, and metadata:
 
 ### Initial FASTQ data QC shell scripts and file keys
 
@@ -86,6 +86,11 @@ Once the reference genome and transcriptome were downloaded, the attached ERCC f
 * [Prepare expression data for analysis HTML report](html/founders_expression_prep_STAR_RSEM.html)
 * [Analyze expression data with voom+limma RMarkdown notebook](Rmd/founders_expression_analysis_STAR_RSEM.Rmd)
 * [Analyze expression data with voom+limma HTML report](html/founders_expression_analysis_STAR_RSEM.html)
+
+### Analyze overlap with human transcriptome data
+
+* [MSET overlap analysis RMarkdown notebook](Rmd/founders_expression_overlap_STAR_RSEM.Rmd)
+* [MSET overlap analysis HTML report](html/founders_expression_overlap_STAR_RSEM.html)
 
 ## Licensing
 
