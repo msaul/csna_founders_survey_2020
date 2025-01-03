@@ -39,7 +39,7 @@ This analysis is performed to process the circadian rhythm amplitude data and ca
 All chunks will run in the working folder for this experiment.
 
 ```{r setup}
-script_root_dir = "~/Box/manuscripts/founders_heritability/"
+script_root_dir = "~/Downloads/founders_heritability/"
 knitr::opts_knit$set(root.dir = script_root_dir)
 ```
 
@@ -92,7 +92,7 @@ fibroblast_amplitude_mean = as.data.frame(fibroblast_amplitude_mean)
 Getting founders strain key
 
 ```{r}
-founders_key = readRDS("~/Box/CC_DO_founders/cc_do_founders_key.RDS")
+founders_key = readRDS("~/Desktop/cc_do_founders_key.RDS")
 row.names(founders_key) = founders_key$strain
 ```
 
@@ -191,15 +191,21 @@ anova(lm(log10(Amplitude_Mean) ~ Cohort + Strain + Sex + Strain:Sex, data = fibr
 
 Calculating heritability using the ANOVA table from the best fitting model. Using the following equation:
 
-$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+$h^2=\displaystyle{{MS_{strain}-MS_{resid}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
 
 where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ is the mean square of the residuals, and $n_{mean}$ is the mean sample size of a strain.
 
 ```{r}
+h2_strainanova <- function(msgenetics, mserror, n) {
+  return((msgenetics - mserror) / (msgenetics + (n - 1) * mserror))
+}
+
 mean_n = nrow(fibroblast_amplitude_mean) / length(unique(fibroblast_amplitude_mean$Strain))
 anova_amplitude = anova(lm(log10(Amplitude_Mean) ~ Cohort + Strain, data = fibroblast_amplitude_mean))
 anova_amplitude_df = as.data.frame(anova_amplitude)
-h2_amplitude = anova_amplitude_df["Strain","Mean Sq"] / (anova_amplitude_df["Strain","Mean Sq"] + ((mean_n - 1) * anova_amplitude_df["Residuals","Mean Sq"]))
+h2_amplitude = h2_strainanova(anova_amplitude_df["Strain","Mean Sq"],
+                              anova_amplitude_df["Residuals","Mean Sq"],
+                              mean_n)
 h2_amplitude
 ```
 
@@ -274,9 +280,9 @@ saveRDS(founders_amplitude_strain_sex_plot, "./output/founders_amplitude_strain_
 ### R session and OS information
 
 ```{r sessionInfo}
-circadian_prep_sessionInfo = sessionInfo()
-circadian_prep_sessionInfo
-saveRDS(circadian_prep_sessionInfo, paste(script_root_dir, "./output/circadian_prep_sessionInfo_",current_date,".RDS", sep = ""), compress="xz")
+circadian_fibroblast_sessionInfo = sessionInfo()
+circadian_fibroblast_sessionInfo
+saveRDS(circadian_fibroblast_sessionInfo, paste(script_root_dir, "./output/circadian_fibroblast_sessionInfo_",current_date,".RDS", sep = ""), compress="xz")
 ```
 
 ## Document Control
