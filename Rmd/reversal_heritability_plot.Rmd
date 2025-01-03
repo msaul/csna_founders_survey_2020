@@ -39,7 +39,7 @@ The preprocessing script `reversal_import_preprocess.Rmd` was used to filter the
 All chunks will run in the working folder for this experiment.
 
 ```{r setup}
-script_root_dir = "~/Box Sync/manuscripts/founders_heritability/"
+script_root_dir = "~/Downloads/founders_heritability/"
 knitr::opts_knit$set(root.dir = script_root_dir)
 ```
 
@@ -91,7 +91,7 @@ reversal_data
 Getting founders strain key
 
 ```{r}
-founders_key = readRDS("~/Box Sync/CC_DO_founders/cc_do_founders_key.RDS")
+founders_key = readRDS("~/Desktop/cc_do_founders_key.RDS")
 row.names(founders_key) = founders_key$strain
 ```
 
@@ -204,15 +204,21 @@ The reduced model with site included be used for downstream heritability calcula
 
 Calculating heritability using the ANOVA table from the best fitting model. Using the following equation:
 
-$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+$h^2=\displaystyle{{MS_{strain}-MS_{resid}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
 
 where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ is the mean square of the residuals, and $n_{mean}$ is the mean sample size of a strain. Ignoring the additive covariate of site, which is a blocking variable.
 
 ```{r}
+h2_strainanova <- function(msgenetics, mserror, n) {
+  return((msgenetics - mserror) / (msgenetics + (n - 1) * mserror))
+}
+
 mean_n = nrow(reversal_data) / length(unique(reversal_data[,"Strain"]))
 anova_reversal = anova(lm(Avg_Anticip_C_R_cubert ~ Site + Strain, data = reversal_data))
 anova_reversal_df = as.data.frame(anova_reversal)
-h2_reversal = anova_reversal_df["Strain","Mean Sq"] / (anova_reversal_df["Strain","Mean Sq"] + ((mean_n - 1) * anova_reversal_df["Residuals","Mean Sq"]))
+h2_reversal = h2_strainanova(anova_reversal_df["Strain","Mean Sq"],
+                             anova_reversal_df["Residuals","Mean Sq"],
+                             mean_n)
 h2_reversal
 ```
 
