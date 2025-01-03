@@ -39,7 +39,7 @@ This analysis is performed to process the novelty data and calculate:
 All chunks will run in the working folder for this experiment.
 
 ```{r setup}
-script_root_dir = "~/Box Sync/manuscripts/founders_heritability/"
+script_root_dir = "~/Downloads/founders_heritability/"
 knitr::opts_knit$set(root.dir = script_root_dir)
 ```
 
@@ -80,7 +80,7 @@ novelty_data
 Getting founders strain key
 
 ```{r}
-founders_key = readRDS("~/Box Sync/CC_DO_founders/cc_do_founders_key.RDS")
+founders_key = readRDS("~/Desktop/cc_do_founders_key.RDS")
 row.names(founders_key) = founders_key$strain
 ```
 
@@ -149,15 +149,21 @@ This will be used for downstream heritability calculations.
 
 Calculating heritability using the ANOVA table from the best fitting model. Using the following equation:
 
-$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+$h^2=\displaystyle{{MS_{strain}-MS_{resid}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
 
 where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ is the mean square of the residuals, and $n_{mean}$ is the mean sample size of a strain.
 
 ```{r}
+h2_strainanova <- function(msgenetics, mserror, n) {
+  return((msgenetics - mserror) / (msgenetics + (n - 1) * mserror))
+}
+
 mean_n = nrow(OFA_data) / length(unique(OFA_data$Strain))
 anova_OFA = anova(lm(OFA_pct_dist_center ~ Strain, data = OFA_data))
 anova_OFA_df = as.data.frame(anova_OFA)
-h2_OFA = anova_OFA_df["Strain","Mean Sq"] / (anova_OFA_df["Strain","Mean Sq"] + ((mean_n - 1) * anova_OFA_df["Residuals","Mean Sq"]))
+h2_OFA = h2_strainanova(anova_OFA_df["Strain","Mean Sq"],
+                        anova_OFA_df["Residuals","Mean Sq"],
+                        mean_n)
 h2_OFA
 ```
 
@@ -292,7 +298,7 @@ anova(lm(LD_total_transitions ^ (1/3) ~ Strain, data = LD_data))$`Pr(>F)`[1]
 
 Calculating heritability using the ANOVA table from the best fitting model. Using the following equation:
 
-$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+$h^2=\displaystyle{{MS_{strain}-MS_{resid}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
 
 where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ is the mean square of the residuals, and $n_{mean}$ is the mean sample size of a strain.
 
@@ -300,7 +306,10 @@ where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ i
 mean_n = nrow(LD_data) / length(unique(LD_data$Strain))
 anova_LD = anova(lm(LD_total_transitions ^ (1/3) ~ Strain, data = LD_data))
 anova_LD_df = as.data.frame(anova_LD)
-h2_LD = anova_LD_df["Strain","Mean Sq"] / (anova_LD_df["Strain","Mean Sq"] + ((mean_n - 1) * anova_LD_df["Residuals","Mean Sq"]))
+
+h2_LD = h2_strainanova(anova_LD_df["Strain","Mean Sq"],
+                       anova_LD_df["Residuals","Mean Sq"],
+                       mean_n)
 h2_LD
 ```
 
@@ -407,7 +416,7 @@ anova(lm(HB_Total_Entries ~ Strain, data = HB_data))$`Pr(>F)`[1]
 
 Calculating heritability using the ANOVA table from the best fitting model. Using the following equation:
 
-$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+$h^2=\displaystyle{{MS_{strain}-MS_{resid}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
 
 where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ is the mean square of the residuals, and $n_{mean}$ is the mean sample size of a strain.
 
@@ -415,7 +424,9 @@ where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ i
 mean_n = nrow(HB_data) / length(unique(HB_data$Strain))
 anova_HB = anova(lm(HB_Total_Entries ~ Strain, data = HB_data))
 anova_HB_df = as.data.frame(anova_HB)
-h2_HB = anova_HB_df["Strain","Mean Sq"] / (anova_HB_df["Strain","Mean Sq"] + ((mean_n - 1) * anova_HB_df["Residuals","Mean Sq"]))
+h2_HB = h2_strainanova(anova_HB_df["Strain","Mean Sq"],
+                       anova_HB_df["Residuals","Mean Sq"],
+                       mean_n)
 h2_HB
 ```
 
@@ -499,7 +510,7 @@ anova(lm(NPP_ZoneTime_GreyWhiteBlack_Total ~ Strain, data = NPP_data))$`Pr(>F)`[
 
 Calculating heritability using the ANOVA table from the best fitting model. Using the following equation:
 
-$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+$h^2=\displaystyle{{MS_{strain}-MS_{resid}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
 
 where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ is the mean square of the residuals, and $n_{mean}$ is the mean sample size of a strain.
 
@@ -507,7 +518,9 @@ where $MS_{strain}$ is the mean square of the strain differences, $MS_{resid}$ i
 mean_n = nrow(NPP_data) / length(unique(NPP_data$Strain))
 anova_NPP = anova(lm(NPP_ZoneTime_GreyWhiteBlack_Total ~ Strain, data = NPP_data))
 anova_NPP_df = as.data.frame(anova_NPP)
-h2_NPP = anova_NPP_df["Strain","Mean Sq"] / (anova_NPP_df["Strain","Mean Sq"] + ((mean_n - 1) * anova_NPP_df["Residuals","Mean Sq"]))
+h2_NPP = h2_strainanova(anova_NPP_df["Strain","Mean Sq"],
+                        anova_NPP_df["Residuals","Mean Sq"],
+                        mean_n)
 h2_NPP
 ```
 
