@@ -72,7 +72,7 @@ ifelse(exprs_pheno_equal, "Expression and phenotype data have the same sample ID
 
 The heritability of sham-exponsed gene expression in the founders is examined here. We use this equation:
 
-$h^2=\displaystyle{{MS_{strain}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
+$h^2=\displaystyle{{MS_{strain}-MS_{resid}}\over{MS_{strain} + (n_{mean} - 1) * MS_{resid}}}$
 
 ```{r}
 samples_sham = founders_pheno[which(founders_pheno$Injection == "Sham"),"Name"]
@@ -90,7 +90,7 @@ for (i in 1:nrow(founders_voom)) {
   aic_nosex_i = AIC(lm_nosex_i)
   anova_nosex_i = anova(lm_nosex_i)
   sham_heritability_i = (anova_i$`Mean Sq`[3] - anova_i$`Mean Sq`[4]) / (2 * (anova_i$`Mean Sq`[3] + (8 - 1) * anova_i$`Mean Sq`[5]))
-  sham_heritability_nosex_i = (anova_nosex_i$`Mean Sq`[2]) / (anova_nosex_i$`Mean Sq`[2] + ((8 - 1) * anova_nosex_i$`Mean Sq`[3]))
+  sham_heritability_nosex_i = (anova_nosex_i$`Mean Sq`[2] - anova_nosex_i$`Mean Sq`[3]) / (anova_nosex_i$`Mean Sq`[2] + ((8 - 1) * anova_nosex_i$`Mean Sq`[3]))
   df_i = data.frame(gene = gene_i, h2_sex_inter = sham_heritability_i, h2_nosex = sham_heritability_nosex_i,
                     aic_sex_inter = aic_i, aic_nosex = aic_nosex_i, stringsAsFactors = FALSE)
   if (exists("h2_df")) {
@@ -107,6 +107,14 @@ h2_df$h2_lowest_aic = ifelse(h2_df$aic_nosex < h2_df$aic_sex_inter, h2_df$h2_nos
 
 hist(h2_df$h2_lowest_aic, breaks = 50, col = "#8A1B61", xlab = "Sham Expression Heritability", main = "Heritability of Founder Striatum Expression", xlim = c(0,1))
 saveRDS(h2_df, paste("founders_sham_expression_heritabilities_",format(Sys.time(),"%Y-%m-%d"),".RDS",sep=""))
+```
+
+Tabulating median no-sex heritability
+
+```{r median_nosex_heritability}
+# R code
+
+median(h2_df$h2_nosex)
 ```
 
 ### Cocaine vs. sham factorial experiment: setup
